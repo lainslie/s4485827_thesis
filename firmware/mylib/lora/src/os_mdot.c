@@ -1,14 +1,14 @@
 /**   
  ***************************************************************
- * @file    mylib/hci/include/hal_hci.c    
+ * @file    mylib/lora/src/os_mdot.c    
  * @author  Lewis Ainslie - s4485827  
- * @date    12/04/2021   
- * @brief   HCI hal source file    
+ * @date    08/11/2021   
+ * @brief   OS mDot source file    
  ***************************************************************
  * EXTERNAL FUNCTIONS
 ***************************************************************
-* hal_init_scu () - initialise i2c communication for scu
-* hal_handle_scu_job()  - handle i2c communcation for scu
+* os_init_mdot () - function used to initialise Lora thread
+* queue_mdot_transmit_message()  - handle addition of messages to queue
 ***************************************************************
  */
 
@@ -17,24 +17,19 @@
 
 
 #define STACKSIZE 2048
-
-/* scheduling priority used by each thread */
 #define PRIORITY 7
 
-void TaskMdotTransmit(void* p1, void* p2, void* p3);
+static void TaskMdotTransmit(void* p1, void* p2, void* p3);
 
 K_THREAD_STACK_DEFINE(mdot_transmit_stack_area, STACKSIZE);
-
-
 K_MEM_SLAB_DEFINE(mdot_transmit_queue_slab, sizeof(RTCM), 10, 0);
 K_FIFO_DEFINE(mdot_transmit_queue);
 
 static k_tid_t mdot_transmit_tid;
-
 static struct k_thread mdot_transmit_thread;
 
-/* 0 for success
- * -1 for failure
+/*
+ * Function used to start Lora transmission thread
  */
 int os_init_mdot() {
 
@@ -47,14 +42,14 @@ int os_init_mdot() {
 }
 
 
-/* Logging task. Task checks semaphores and determines the print type accordingly.
- * Depending on the print type, if the message received off the fifo is also
- * of the same type, that message printing will be handle in 'print_log_data'
- * */
-void TaskMdotTransmit(void* p1, void* p2, void* p3) {
+/* 
+ * LoraWAN transmission task. Receives data off queue, from GPS
+ * Receiver task, and uses HAL to transmit data
+ */
+static void TaskMdotTransmit(void* p1, void* p2, void* p3) {
+    int ret;
 
 	while (1) {
-
         RTCM* sending_data;
     
         if (k_fifo_is_empty(&mdot_transmit_queue)) {
@@ -63,18 +58,13 @@ void TaskMdotTransmit(void* p1, void* p2, void* p3) {
         }
 
         sending_data = k_fifo_get(&mdot_transmit_queue, K_NO_WAIT);
-        // printf("data: %s", sending_data->message);
 
-        int ret = hal_mdot_send_payload(sending_data);
-
-
-        k_free(sending_data->message);
-
+        ret = hal_mdot_send_payload(sending_data);
 
         /* free allocated memory */
-        if (sending_data != NULL) {
+        k_free(sending_data->message);
+        if (sending_data != NULL) 
             k_mem_slab_free(&mdot_transmit_queue_slab, (void **)&sending_data);
-        }
 
 		k_msleep(100);
 	}
@@ -82,8 +72,12 @@ void TaskMdotTransmit(void* p1, void* p2, void* p3) {
 
 
 
-/* AHU intialisation of tasks and all hardware requirements
- * */
+
+/*
+ * Function used to add RTCM data onto the mdot
+ * transmission queue. Handles memory 
+ * allocation
+ */
 void queue_mdot_transmit_message(RTCM *data) {
 
     RTCM *send_data;

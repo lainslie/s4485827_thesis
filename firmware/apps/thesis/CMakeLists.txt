@@ -19,10 +19,8 @@ MACRO(SUBDIRLIST result curdir)
     ENDIF()
   ENDFOREACH()
   SET(${result} ${dirlist})
-  message(WARNING "hi ${dirlist}")
 ENDMACRO()
 
-#set(DIRECTORY_LIST "")
 
 SUBDIRLIST(DIRECTORY_LIST ${MY_LIB})
 
